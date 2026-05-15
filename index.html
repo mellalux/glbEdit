@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GLB Editor</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; overflow: hidden; }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 100;
+      background: rgba(0,0,0,0.8);
+      padding: 15px;
+      border-radius: 8px;
+      color: white;
+    }
+    button, select, input {
+      padding: 8px 12px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button { background: #4a90d9; color: white; }
+    button:hover { background: #357abd; }
+    input, select { background: #333; color: white; }
+    .row { margin: 10px 0; }
+    label { display: block; margin-bottom: 5px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div class="row">
+      <label>Load GLB File:</label>
+      <input type="file" id="fileInput" accept=".glb">
+    </div>
+    
+    <div class="row">
+      <label>Animations:</label>
+      <select id="animationSelect">
+        <option value="">-- Select Animation --</option>
+      </select>
+    </div>
+    
+    <div class="row">
+      <button id="playBtn">Play</button>
+      <button id="pauseBtn">Pause</button>
+    </div>
+    
+    <div class="row">
+      <label>Rename Animation:</label>
+      <input type="text" id="newName" placeholder="New name">
+      <button id="renameBtn">Rename</button>
+    </div>
+    
+    <div class="row">
+      <button id="saveBtn">Save Modified GLB</button>
+    </div>
+  </div>
+  
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
