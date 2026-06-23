@@ -27,8 +27,75 @@
     button { background: #4a90d9; color: white; }
     button:hover { background: #357abd; }
     input, select { background: #333; color: white; }
+    #boneSelect {
+      width: 350px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    #boneSelect option {
+      padding: 5px;
+    }
+    select[contenteditable] { background: #444; }
+    input[type="range"] { width: 200px; }
+    input[type="number"] { width: 80px; margin-left: 10px; }
     .row { margin: 10px 0; }
+    .slider-row { display: flex; align-items: center; gap: 10px; }
     label { display: block; margin-bottom: 5px; font-size: 14px; }
+    #zoomControls {
+      position: absolute;
+      top: 50%;
+      right: 20px;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #zoomControls button {
+      width: 50px;
+      height: 50px;
+      font-size: 24px;
+      font-weight: bold;
+      border-radius: 50%;
+    }
+    .bone-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px;
+      margin: 2px 0;
+      background: #333;
+      border-radius: 3px;
+    }
+    .bone-item:hover {
+      background: #444;
+    }
+    .bone-name {
+      color: #0f0;
+      flex-grow: 1;
+      cursor: text;
+      user-select: all;
+    }
+    .bone-copy-btn {
+      padding: 3px 8px;
+      font-size: 11px;
+      margin: 0;
+      margin-left: 10px;
+    }
+    .hierarchy-item {
+      margin-left: 20px;
+      padding: 3px 5px;
+      color: #0f0;
+    }
+    .hierarchy-root {
+      margin-left: 0;
+      font-weight: bold;
+      color: #0ff;
+    }
+    .hierarchy-branch {
+      border-left: 1px solid #555;
+      padding-left: 10px;
+      margin-left: 5px;
+    }
   </style>
 </head>
 <body>
@@ -39,7 +106,7 @@
     </div>
     
     <div class="row">
-      <label>Animations:</label>
+      <label>Animations: <span id="animationIndex" style="color: #4a90d9; font-weight: bold;"></span></label>
       <select id="animationSelect">
         <option value="">-- Select Animation --</option>
       </select>
@@ -52,15 +119,90 @@
     
     <div class="row">
       <label>Rename Animation:</label>
-      <input type="text" id="newName" placeholder="New name">
+      <input type="text" id="newName" list="savedNames" placeholder="New name">
+      <datalist id="savedNames"></datalist>
       <button id="renameBtn">Rename</button>
     </div>
     
     <div class="row">
       <button id="saveBtn">Save Modified GLB</button>
     </div>
+
+    <div class="row" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #555;">
+      <label>Skeleton Editor:</label>
+      <select id="boneSelect">
+        <option value="">-- Select Bone --</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>Rotation X: <span id="xValue">0°</span></label>
+      <div class="slider-row">
+        <input type="range" id="xSlider" min="-3.14159" max="3.14159" step="0.01" value="0">
+        <input type="number" id="xInput" min="-180" max="180" step="0.1" value="0" placeholder="degrees">
+      </div>
+    </div>
+
+    <div class="row">
+      <label>Rotation Y: <span id="yValue">0°</span></label>
+      <div class="slider-row">
+        <input type="range" id="ySlider" min="-3.14159" max="3.14159" step="0.01" value="0">
+        <input type="number" id="yInput" min="-180" max="180" step="0.1" value="0" placeholder="degrees">
+      </div>
+    </div>
+
+    <div class="row">
+      <label>Rotation Z: <span id="zValue">0°</span></label>
+      <div class="slider-row">
+        <input type="range" id="zSlider" min="-3.14159" max="3.14159" step="0.01" value="0">
+        <input type="number" id="zInput" min="-180" max="180" step="0.1" value="0" placeholder="degrees">
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="resetBoneBtn">Reset Bone</button>
+    </div>
+
+    <div class="row">
+      <button id="copyBoneBtn">Copy Single Bone</button>
+      <button id="pasteBoneBtn">Paste Single Bone</button>
+    </div>
+
+    <div class="row" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #555;">
+      <label>Skeleton JSON:</label>
+      <button id="exportSkeletonBtn">Export Skeleton to JSON</button>
+      <button id="importSkeletonBtn">Import Skeleton from JSON</button>
+    </div>
+
+    <div class="row">
+      <textarea id="skeletonJson" rows="10" style="width: 100%; background: #222; color: #0f0; font-family: monospace; font-size: 12px; padding: 10px; border: 1px solid #555; border-radius: 4px;" placeholder="Skeleton JSON will appear here..."></textarea>
+    </div>
+
+    <div class="row">
+      <button id="copyJsonBtn">Copy JSON to Clipboard</button>
+    </div>
+
+    <div class="row" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #555;">
+      <label>Bone Names List:</label>
+      <button id="copyAllBoneNamesBtn">Copy All Bone Names</button>
+      <button id="refreshBoneListBtn">Refresh List</button>
+      <button id="toggleHierarchyBtn">Show Hierarchy</button>
+    </div>
+
+    <div class="row">
+      <div id="boneNamesList" style="max-height: 300px; overflow-y: auto; background: #222; padding: 10px; border: 1px solid #555; border-radius: 4px; font-family: monospace; font-size: 12px;"></div>
+    </div>
+
+    <div class="row">
+      <div id="boneHierarchy" style="max-height: 400px; overflow-y: auto; background: #222; padding: 10px; border: 1px solid #555; border-radius: 4px; font-family: monospace; font-size: 12px; display: none;"></div>
+    </div>
   </div>
-  
+
+  <div id="zoomControls">
+    <button id="zoomInBtn">+</button>
+    <button id="zoomOutBtn">-</button>
+  </div>
+
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
