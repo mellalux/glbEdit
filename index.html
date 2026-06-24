@@ -10,7 +10,7 @@
     #ui {
       position: absolute;
       top: 10px;
-      left: 10px;
+      right: 10px;
       z-index: 100;
       background: rgba(0,0,0,0.8);
       padding: 15px;
@@ -43,11 +43,11 @@
     label { display: block; margin-bottom: 5px; font-size: 14px; }
     #zoomControls {
       position: absolute;
-      top: 50%;
-      right: 20px;
-      transform: translateY(-50%);
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       gap: 10px;
     }
     #zoomControls button {
@@ -56,6 +56,50 @@
       font-size: 24px;
       font-weight: bold;
       border-radius: 50%;
+    }
+    #boneNamesPanel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 100;
+      background: rgba(0,0,0,0.8);
+      padding: 15px;
+      border-radius: 8px;
+      color: white;
+      width: 400px;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+    }
+    #dropZone {
+      border: 2px dashed #4a90d9;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      background: rgba(74, 144, 217, 0.1);
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+    #dropZone:hover {
+      background: rgba(74, 144, 217, 0.2);
+      border-color: #357abd;
+    }
+    #dropZone.drag-over {
+      background: rgba(74, 144, 217, 0.3);
+      border-color: #0f0;
+      transform: scale(1.02);
+    }
+    #dropZone label {
+      cursor: pointer;
+      display: block;
+      margin-bottom: 10px;
+    }
+    #fileInput {
+      display: none;
+    }
+    .drop-hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 5px;
     }
     .bone-item {
       display: flex;
@@ -101,34 +145,6 @@
 <body>
   <div id="ui">
     <div class="row">
-      <label>Load GLB File:</label>
-      <input type="file" id="fileInput" accept=".glb">
-    </div>
-    
-    <div class="row">
-      <label>Animations: <span id="animationIndex" style="color: #4a90d9; font-weight: bold;"></span></label>
-      <select id="animationSelect">
-        <option value="">-- Select Animation --</option>
-      </select>
-    </div>
-    
-    <div class="row">
-      <button id="playBtn">Play</button>
-      <button id="pauseBtn">Pause</button>
-    </div>
-    
-    <div class="row">
-      <label>Rename Animation:</label>
-      <input type="text" id="newName" list="savedNames" placeholder="New name">
-      <datalist id="savedNames"></datalist>
-      <button id="renameBtn">Rename</button>
-    </div>
-    
-    <div class="row">
-      <button id="saveBtn">Save Modified GLB</button>
-    </div>
-
-    <div class="row" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #555;">
       <label>Skeleton Editor:</label>
       <select id="boneSelect">
         <option value="">-- Select Bone --</option>
@@ -180,6 +196,39 @@
 
     <div class="row">
       <button id="copyJsonBtn">Copy JSON to Clipboard</button>
+    </div>
+  </div>
+
+  <div id="boneNamesPanel">
+    <div class="row">
+      <div id="dropZone">
+        <label for="fileInput">Load GLB File</label>
+        <input type="file" id="fileInput" accept=".glb">
+        <div class="drop-hint">Click to browse or drag & drop a .glb file here</div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #555;">
+      <label>Animations: <span id="animationIndex" style="color: #4a90d9; font-weight: bold;"></span></label>
+      <select id="animationSelect">
+        <option value="">-- Select Animation --</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <button id="playBtn">Play</button>
+      <button id="pauseBtn">Pause</button>
+    </div>
+
+    <div class="row">
+      <label>Rename Animation:</label>
+      <input type="text" id="newName" list="savedNames" placeholder="New name">
+      <datalist id="savedNames"></datalist>
+      <button id="renameBtn">Rename</button>
+    </div>
+
+    <div class="row">
+      <button id="saveBtn">Save Modified GLB</button>
     </div>
 
     <div class="row" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #555;">

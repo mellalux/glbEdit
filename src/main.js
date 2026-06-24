@@ -39,6 +39,36 @@ function init() {
   const fileInput = document.getElementById('fileInput');
   fileInput.addEventListener('change', handleFileSelect);
 
+  // Drag and drop support
+  const dropZone = document.getElementById('dropZone');
+
+  dropZone.addEventListener('click', () => {
+    fileInput.click();
+  });
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.add('drag-over');
+  });
+
+  dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileDrop(files[0]);
+    }
+  });
+
   const renameBtn = document.getElementById('renameBtn');
   renameBtn.addEventListener('click', renameAnimation);
 
@@ -46,6 +76,14 @@ function init() {
   saveBtn.addEventListener('click', saveGLB);
 
   window.addEventListener('resize', onWindowResize);
+
+  // Prevent default drag-and-drop behavior on the document
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+  });
 
   // Skeleton editor event listeners
   const boneSelect = document.getElementById('boneSelect');
@@ -103,7 +141,22 @@ function init() {
 function handleFileSelect(event) {
   const file = event.target.files[0];
   if (!file) return;
+  loadFile(file);
+}
 
+function handleFileDrop(file) {
+  if (!file) return;
+
+  // Check if file is a GLB
+  if (!file.name.toLowerCase().endsWith('.glb')) {
+    alert('Please drop a .glb file');
+    return;
+  }
+
+  loadFile(file);
+}
+
+function loadFile(file) {
   const reader = new FileReader();
   reader.onload = function(e) {
     const arrayBuffer = e.target.result;
