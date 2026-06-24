@@ -15,7 +15,7 @@
   "type": "commonjs",
   "dependencies": {
     "@gltf-transform/core": "^4.3.0",
-    "@gltf-transform/extensions": "^4.3.0",
+    "@gltf-transform/extensions": "4.4.0",
     "three": "^0.184.0"
   },
   "devDependencies": {
