@@ -8,6 +8,9 @@ A web-based 3D model editor for GLB (glTF Binary) files with advanced skeleton a
 - Drag-and-drop or file picker support for loading GLB files
 - Interactive 3D viewport with orbit controls
 - Automatic model centering and zoom controls
+- Automatic scaling for very small models (< 0.1 units) with user notification
+- Skeleton helper visualization for skinned meshes
+- Enhanced camera adjustment based on model size
 - Save modified models back to GLB format
 
 ### Animation Tools
@@ -23,12 +26,21 @@ A web-based 3D model editor for GLB (glTF Binary) files with advanced skeleton a
 - Copy and paste bone rotations between bones
 - Reset individual bones to their original rotations
 - Export/import entire skeleton configurations as JSON
+- **Auto-updating skeleton JSON**: Edit JSON in the textarea and changes apply automatically after 500ms
+- **Reset Skeleton**: Quickly restore all bones to their original positions
+- Supports both array and object formats for skeleton JSON import
 
 ### Bone Management
 - Complete bone list with parent relationships
 - Hierarchical bone tree view
 - Copy individual or all bone names to clipboard
 - Parent-child relationship visualization
+
+### User Interface
+- Custom modal dialog system for alerts and confirmations
+- Smooth animations for modal dialogs
+- Improved user feedback with non-blocking notifications
+- Real-time visual feedback for button actions
 
 ## Getting Started
 
@@ -94,14 +106,41 @@ glbEdit/
 - "Reset Bone" restores original rotation
 
 ### Export/Import
-- **Export Skeleton to JSON**: Saves complete skeleton configuration
-- **Import Skeleton from JSON**: Loads previously saved skeleton data
-- **Save Modified GLB**: Downloads the edited model
+- **Export Skeleton to JSON**: Saves complete skeleton configuration including bone rotations, positions, and scale
+- **Import Skeleton from JSON**: Loads previously saved skeleton data with validation
+- **Auto-Apply JSON Edits**: Changes made in the JSON textarea automatically apply to the model after 500ms
+- **Reset Skeleton**: Clear all modifications and restore bones to original positions
+- **Copy JSON to Clipboard**: Quick button to copy skeleton JSON data
+- **Save Modified GLB**: Downloads the edited model with all modifications preserved
+- Supports both array format `[{name, rotation}]` and object format `{boneName: {rotation}}` for JSON import
 
 ## Data Persistence
 
 - Animation names are saved to browser local storage
 - Previously used animation names appear in autocomplete suggestions
+
+## Advanced Features
+
+### Automatic Model Scaling
+When loading very small models (smaller than 0.1 units), the editor automatically scales them up for better visibility. The scaling factor is preserved when you save the GLB file, so you don't need to manually scale in external tools.
+
+### Skeleton Visualization
+For models with skinned meshes, a skeleton helper is automatically created and displayed, making it easier to visualize bone hierarchies and transformations in 3D space.
+
+### Smart JSON Editing
+The skeleton JSON textarea features auto-apply functionality:
+- Changes are automatically applied to the model after 500ms of inactivity
+- No need to manually click "Import" after each edit
+- Syntax errors are silently ignored while typing
+- Supports flexible JSON formats for easier manual editing
+
+### Enhanced Debugging
+The application includes extensive console logging for:
+- Model loading diagnostics
+- Mesh and material information
+- Skeleton helper creation
+- Camera adjustments
+- JSON import/export operations
 
 ## Browser Compatibility
 

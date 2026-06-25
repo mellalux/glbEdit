@@ -12,6 +12,73 @@ let bones = [];
 let selectedBone = null;
 let boneOriginalRotations = new Map();
 let copiedRotation = null;
+let skeletonHelper = null;
+let jsonUpdateTimeout = null;
+
+// Modal functions
+function showModal(message, title = 'Message', type = 'alert') {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalMessage = document.getElementById('modalMessage');
+    const modalConfirm = document.getElementById('modalConfirm');
+    const modalCancel = document.getElementById('modalCancel');
+
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
+
+    if (type === 'confirm') {
+      modalConfirm.textContent = 'OK';
+      modalCancel.style.display = 'inline-block';
+
+      const handleConfirm = () => {
+        modal.style.display = 'none';
+        modalConfirm.removeEventListener('click', handleConfirm);
+        modalCancel.removeEventListener('click', handleCancel);
+        resolve(true);
+      };
+
+      const handleCancel = () => {
+        modal.style.display = 'none';
+        modalConfirm.removeEventListener('click', handleConfirm);
+        modalCancel.removeEventListener('click', handleCancel);
+        resolve(false);
+      };
+
+      modalConfirm.addEventListener('click', handleConfirm);
+      modalCancel.addEventListener('click', handleCancel);
+    } else {
+      modalConfirm.textContent = 'OK';
+      modalCancel.style.display = 'none';
+
+      const handleOk = () => {
+        modal.style.display = 'none';
+        modalConfirm.removeEventListener('click', handleOk);
+        resolve(true);
+      };
+
+      modalConfirm.addEventListener('click', handleOk);
+    }
+
+    modal.style.display = 'block';
+
+    // Close modal when clicking outside
+    modal.onclick = (event) => {
+      if (event.target === modal) {
+        modal.style.display = 'none';
+        resolve(false);
+      }
+    };
+  });
+}
+
+function showAlert(message, title = 'Message') {
+  return showModal(message, title, 'alert');
+}
+
+function showConfirm(message, title = 'Confirm') {
+  return showModal(message, title, 'confirm');
+}
 
 init();
 animate();
@@ -20,7 +87,8 @@ function init() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x222222);
 
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  // Use very small near plane to handle tiny models
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.0001, 10000);
   camera.position.set(2, 2, 3);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -115,10 +183,16 @@ function init() {
 
   const exportSkeletonBtn = document.getElementById('exportSkeletonBtn');
   const importSkeletonBtn = document.getElementById('importSkeletonBtn');
+  const resetSkeletonBtn = document.getElementById('resetSkeletonBtn');
   const copyJsonBtn = document.getElementById('copyJsonBtn');
+  const skeletonJsonTextarea = document.getElementById('skeletonJson');
   exportSkeletonBtn.addEventListener('click', exportSkeletonToJson);
   importSkeletonBtn.addEventListener('click', importSkeletonFromJson);
+  resetSkeletonBtn.addEventListener('click', resetSkeleton);
   copyJsonBtn.addEventListener('click', copyJsonToClipboard);
+
+  // Auto-apply skeleton JSON changes with debounce
+  skeletonJsonTextarea.addEventListener('input', handleSkeletonJsonInput);
 
   // Zoom controls
   const zoomInBtn = document.getElementById('zoomInBtn');
@@ -149,7 +223,7 @@ function handleFileDrop(file) {
 
   // Check if file is a GLB
   if (!file.name.toLowerCase().endsWith('.glb')) {
-    alert('Please drop a .glb file');
+    showAlert('Please drop a .glb file', 'Invalid File');
     return;
   }
 
@@ -167,17 +241,63 @@ function loadFile(file) {
 
 function loadGLBFromArrayBuffer(arrayBuffer) {
   const loader = new GLTFLoader();
-  
+
   loader.parse(arrayBuffer, '', function(gltf) {
     if (model) {
       scene.remove(model);
       if (mixer) mixer.stopAllAction();
     }
-    
+
+    // Remove old skeleton helper if it exists
+    if (skeletonHelper) {
+      scene.remove(skeletonHelper);
+      skeletonHelper = null;
+    }
+
     model = gltf.scene;
     scene.add(model);
 
+    // Debug logging
+    console.log('GLB loaded successfully');
+    console.log('Scene:', gltf.scene);
+
+    // Check for meshes
+    let meshCount = 0;
+    let skinnedMeshCount = 0;
+    model.traverse((object) => {
+      if (object.isMesh) {
+        meshCount++;
+        console.log('Found mesh:', object.name, 'Material:', object.material?.name);
+
+        // Check if material is visible
+        if (object.material) {
+          if (object.material.transparent && object.material.opacity === 0) {
+            console.warn('Mesh has transparent material with 0 opacity:', object.name);
+          }
+          // Force materials to be visible
+          if (object.material.opacity === 0) {
+            object.material.opacity = 1;
+          }
+        }
+      }
+      if (object.isSkinnedMesh) {
+        skinnedMeshCount++;
+        console.log('Found skinned mesh:', object.name);
+
+        // Add skeleton helper for the first skinned mesh
+        if (!skeletonHelper && object.skeleton) {
+          skeletonHelper = new THREE.SkeletonHelper(object);
+          skeletonHelper.visible = true;
+          scene.add(skeletonHelper);
+          console.log('Added skeleton helper');
+        }
+      }
+    });
+
+    console.log(`Total meshes: ${meshCount}, Skinned meshes: ${skinnedMeshCount}`);
+
     animations = gltf.animations || [];
+    console.log(`Animations found: ${animations.length}`);
     populateAnimationList();
 
     if (animations.length > 0) {
@@ -190,6 +310,9 @@ function loadGLBFromArrayBuffer(arrayBuffer) {
     displayBoneNamesList();
 
     centerModel();
+
+    // Adjust camera based on model size
+    adjustCamera();
   }, function(error) {
     console.error('Error loading GLB:', error);
   });
@@ -197,12 +320,67 @@ function loadGLBFromArrayBuffer(arrayBuffer) {
 
 function centerModel() {
   if (!model) return;
-  
+
   const box = new THREE.Box3().setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
   model.position.sub(center);
-  
+
   controls.target.set(0, 0, 0);
+}
+
+function adjustCamera() {
+  if (!model) return;
+
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+
+  console.log('Model size:', size);
+  console.log('Model max dimension:', maxDim);
+
+  if (maxDim === 0) {
+    console.warn('Model has zero size! This might indicate missing mesh data.');
+    showAlert('Model has zero size! This might indicate missing mesh data.', 'Warning');
+    // Set a default camera position if model has no size
+    camera.position.set(2, 2, 3);
+    return;
+  }
+
+  // If model is extremely small (< 0.1 units), scale it up
+  if (maxDim < 0.1) {
+    const scaleFactor = 2 / maxDim; // Scale to about 2 units
+    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
+
+    const message = `Model is very small (${maxDim.toFixed(6)} units).\n\nAutomatically scaled up by ${scaleFactor.toFixed(2)}x for better visibility.\n\nThis scale will be applied when you save the GLB file.`;
+    console.warn(`Model is very small (${maxDim.toFixed(6)} units). Scaling up by ${scaleFactor.toFixed(2)}x`);
+
+    // Show modal notification (non-blocking)
+    showAlert(message, 'Model Scaled');
+
+    // Recalculate size after scaling
+    const newBox = new THREE.Box3().setFromObject(model);
+    const newSize = newBox.getSize(new THREE.Vector3());
+    const newMaxDim = Math.max(newSize.x, newSize.y, newSize.z);
+
+    console.log('New model size after scaling:', newSize);
+    console.log('New max dimension:', newMaxDim);
+
+    // Position camera based on new size
+    const distance = newMaxDim * 2.5;
+    camera.position.set(distance, distance, distance);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+
+    console.log('Camera adjusted to distance:', distance);
+  } else {
+    // Position camera based on model size
+    const distance = maxDim * 2.5;
+    camera.position.set(distance, distance, distance);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+
+    console.log('Camera adjusted to distance:', distance);
+  }
 }
 
 function populateAnimationList() {
@@ -261,14 +439,14 @@ function renameAnimation() {
 
   // Check for 'idle' name
   if (newName.toLowerCase() === 'idle') {
-    alert('Cannot use "idle" as animation name.');
+    showAlert('Cannot use "idle" as animation name.', 'Invalid Name');
     return;
   }
 
   // Check for duplicate names
   const existingNames = animations.map(anim => anim.name.toLowerCase());
   if (existingNames.includes(newName.toLowerCase())) {
-    alert('Animation name already exists. Please choose a different name.');
+    showAlert('Animation name already exists. Please choose a different name.', 'Duplicate Name');
     return;
   }
 
@@ -310,10 +488,10 @@ function populateNewNameSelect() {
   });
 }
 
-function saveGLB() {
+async function saveGLB() {
   if (!model) return;
 
-  const confirmed = confirm('Save modified GLB file?');
+  const confirmed = await showConfirm('Save modified GLB file?', 'Confirm Save');
   if (!confirmed) return;
 
   const exportGroup = new THREE.Group();
@@ -548,7 +726,7 @@ function resetBone() {
 // Copy/Paste functions
 function copyBoneRotation() {
   if (!selectedBone) {
-    alert('Please select a bone first');
+    showAlert('Please select a bone first', 'No Bone Selected');
     return;
   }
 
@@ -571,12 +749,12 @@ function copyBoneRotation() {
 
 function pasteBoneRotation() {
   if (!selectedBone) {
-    alert('Please select a bone first');
+    showAlert('Please select a bone first', 'No Bone Selected');
     return;
   }
 
   if (!copiedRotation) {
-    alert('No rotation copied yet');
+    showAlert('No rotation copied yet', 'No Data');
     return;
   }
 
@@ -600,7 +778,7 @@ function pasteBoneRotation() {
 // Skeleton JSON export/import
 function exportSkeletonToJson() {
   if (bones.length === 0) {
-    alert('No skeleton found. Please load a GLB file first.');
+    showAlert('No skeleton found. Please load a GLB file first.', 'No Skeleton');
     return;
   }
 
@@ -665,7 +843,18 @@ function exportSkeletonToJson() {
   };
 
   const jsonString = JSON.stringify(skeletonData, null, 2);
-  document.getElementById('skeletonJson').value = jsonString;
+
+  // Temporarily disable auto-update to prevent loop
+  const textarea = document.getElementById('skeletonJson');
+  const oldHandler = textarea.oninput;
+  textarea.oninput = null;
+
+  textarea.value = jsonString;
+
+  // Re-enable auto-update after a short delay
+  setTimeout(() => {
+    textarea.oninput = oldHandler;
+  }, 100);
 
   console.log('Exported skeleton:', skeletonData);
 
@@ -678,38 +867,134 @@ function exportSkeletonToJson() {
   }, 1000);
 }
 
-function importSkeletonFromJson() {
-  const jsonString = document.getElementById('skeletonJson').value;
-
+async function applySkeletonJson(jsonString, showFeedback = false) {
+  // If empty, reset to original positions
   if (!jsonString.trim()) {
-    alert('Please paste JSON data first');
-    return;
+    if (showFeedback) {
+      // User explicitly tried to import empty - reset skeleton
+      resetAllBonesToOriginal();
+      return true;
+    }
+    // Silent return for auto-update
+    return false;
   }
 
   try {
     const skeletonData = JSON.parse(jsonString);
 
-    if (!skeletonData.bones || !Array.isArray(skeletonData.bones)) {
-      throw new Error('Invalid skeleton JSON format');
+    if (!skeletonData.bones) {
+      throw new Error('Invalid skeleton JSON format: missing "bones" field');
     }
 
-    // Apply rotations to bones
-    skeletonData.bones.forEach(boneData => {
+    // Support both array and object format
+    let boneDataList = [];
+
+    if (Array.isArray(skeletonData.bones)) {
+      // Array format: [{ name: "Hips", rotation: {...} }, ...]
+      boneDataList = skeletonData.bones;
+    } else if (typeof skeletonData.bones === 'object') {
+      // Object format: { "Hips": { rotation: {...} }, ... }
+      boneDataList = Object.entries(skeletonData.bones).map(([name, data]) => ({
+        name: name,
+        ...data
+      }));
+    } else {
+      throw new Error('Invalid skeleton JSON format: "bones" must be an array or object');
+    }
+
+    // Apply transformations to bones
+    let appliedCount = 0;
+    let selectedBoneWasUpdated = false;
+
+    boneDataList.forEach(boneData => {
       const bone = bones.find(b => b.name === boneData.name);
-      if (bone && boneData.rotation) {
-        bone.rotation.x = boneData.rotation.x;
-        bone.rotation.y = boneData.rotation.y;
-        bone.rotation.z = boneData.rotation.z;
+      if (bone) {
+        // Apply rotation
+        if (boneData.rotation) {
+          bone.rotation.x = boneData.rotation.x || 0;
+          bone.rotation.y = boneData.rotation.y || 0;
+          bone.rotation.z = boneData.rotation.z || 0;
+          appliedCount++;
+
+          // Check if this is the currently selected bone
+          if (selectedBone && selectedBone.uuid === bone.uuid) {
+            selectedBoneWasUpdated = true;
+          }
+        }
+
+        // Apply position (if provided)
+        if (boneData.position) {
+          bone.position.x = boneData.position.x || 0;
+          bone.position.y = boneData.position.y || 0;
+          bone.position.z = boneData.position.z || 0;
+        }
+
+        // Apply scale (if provided)
+        if (boneData.scale) {
+          bone.scale.x = boneData.scale.x || 1;
+          bone.scale.y = boneData.scale.y || 1;
+          bone.scale.z = boneData.scale.z || 1;
+        }
       }
     });
 
-    // Update sliders if a bone is selected
-    if (selectedBone) {
+    // Always update sliders if a bone is selected and was modified
+    if (selectedBone && selectedBoneWasUpdated) {
       updateSliders();
+      console.log(`Updated sliders for selected bone: ${selectedBone.name}`);
     }
 
-    console.log('Imported skeleton:', skeletonData);
+    console.log(`Applied skeleton JSON: ${appliedCount} bones updated`);
+    return true;
 
+  } catch (error) {
+    // Only show error feedback if user explicitly clicked import
+    if (showFeedback) {
+      await showAlert('Error importing JSON: ' + error.message, 'Import Error');
+    }
+    // For auto-update, silently ignore parse errors (user might still be typing)
+    if (!showFeedback && error instanceof SyntaxError) {
+      // User is still typing JSON, don't spam console
+      return false;
+    }
+    console.error('Import error:', error);
+    return false;
+  }
+}
+
+function resetAllBonesToOriginal() {
+  if (bones.length === 0) return;
+
+  let selectedBoneWasReset = false;
+
+  bones.forEach(bone => {
+    const originalRot = boneOriginalRotations.get(bone.uuid);
+    if (originalRot) {
+      bone.rotation.x = originalRot.x;
+      bone.rotation.y = originalRot.y;
+      bone.rotation.z = originalRot.z;
+
+      // Check if this is the currently selected bone
+      if (selectedBone && selectedBone.uuid === bone.uuid) {
+        selectedBoneWasReset = true;
+      }
+    }
+  });
+
+  // Update sliders if the selected bone was reset
+  if (selectedBone && selectedBoneWasReset) {
+    updateSliders();
+    console.log(`Updated sliders after reset for: ${selectedBone.name}`);
+  }
+
+  console.log('Reset all bones to original positions');
+}
+
+async function importSkeletonFromJson() {
+  const jsonString = document.getElementById('skeletonJson').value;
+  const success = await applySkeletonJson(jsonString, true);
+
+  if (success) {
     // Visual feedback
     const importBtn = document.getElementById('importSkeletonBtn');
     const originalText = importBtn.textContent;
@@ -717,11 +1002,49 @@ function importSkeletonFromJson() {
     setTimeout(() => {
       importBtn.textContent = originalText;
     }, 1000);
-
-  } catch (error) {
-    alert('Error importing JSON: ' + error.message);
-    console.error('Import error:', error);
   }
+}
+
+function resetSkeleton() {
+  if (bones.length === 0) {
+    showAlert('No skeleton loaded. Load a GLB file first.', 'No Skeleton');
+    return;
+  }
+
+  // Clear the JSON textarea
+  const textarea = document.getElementById('skeletonJson');
+  const oldHandler = textarea.oninput;
+  textarea.oninput = null; // Prevent auto-update trigger
+  textarea.value = '';
+  setTimeout(() => {
+    textarea.oninput = oldHandler;
+  }, 100);
+
+  // Reset all bones to original positions
+  resetAllBonesToOriginal();
+
+  // Visual feedback
+  const resetBtn = document.getElementById('resetSkeletonBtn');
+  const originalText = resetBtn.textContent;
+  resetBtn.textContent = 'Reset!';
+  setTimeout(() => {
+    resetBtn.textContent = originalText;
+  }, 1000);
+
+  console.log('Skeleton reset and JSON cleared');
+}
+
+function handleSkeletonJsonInput() {
+  // Clear previous timeout
+  if (jsonUpdateTimeout) {
+    clearTimeout(jsonUpdateTimeout);
+  }
+
+  // Set new timeout to apply changes after 500ms of no typing
+  jsonUpdateTimeout = setTimeout(() => {
+    const jsonString = document.getElementById('skeletonJson').value;
+    applySkeletonJson(jsonString, false);
+  }, 500);
 }
 
 function copyJsonToClipboard() {
@@ -729,7 +1052,7 @@ function copyJsonToClipboard() {
   const jsonString = jsonTextarea.value;
 
   if (!jsonString.trim()) {
-    alert('No JSON to copy. Please export skeleton first.');
+    showAlert('No JSON to copy. Please export skeleton first.', 'No Data');
     return;
   }
 
@@ -742,7 +1065,7 @@ function copyJsonToClipboard() {
       copyBtn.textContent = originalText;
     }, 1000);
   }).catch(err => {
-    alert('Failed to copy to clipboard: ' + err);
+    showAlert('Failed to copy to clipboard: ' + err, 'Clipboard Error');
   });
 }
 
@@ -798,13 +1121,13 @@ function copyBoneName(name, button) {
     }, 1000);
   }).catch(err => {
     console.error('Failed to copy bone name:', err);
-    alert('Failed to copy: ' + err);
+    showAlert('Failed to copy: ' + err, 'Clipboard Error');
   });
 }
 
 function copyAllBoneNames() {
   if (bones.length === 0) {
-    alert('No bones found. Load a GLB file first.');
+    showAlert('No bones found. Load a GLB file first.', 'No Bones');
     return;
   }
 
@@ -819,7 +1142,7 @@ function copyAllBoneNames() {
     }, 1500);
   }).catch(err => {
     console.error('Failed to copy all bone names:', err);
-    alert('Failed to copy: ' + err);
+    showAlert('Failed to copy: ' + err, 'Clipboard Error');
   });
 }
 
@@ -913,7 +1236,7 @@ function buildBoneHierarchyNode(bone, level, isRoot = false) {
 
 function copyHierarchyAsText() {
   if (bones.length === 0) {
-    alert('No bones found.');
+    showAlert('No bones found.', 'No Bones');
     return;
   }
 
@@ -938,9 +1261,23 @@ function copyHierarchyAsText() {
   });
 
   navigator.clipboard.writeText(hierarchyText).then(() => {
-    alert('Hierarchy copied to clipboard!');
+    showAlert('Hierarchy copied to clipboard!', 'Success');
   }).catch(err => {
     console.error('Failed to copy hierarchy:', err);
-    alert('Failed to copy: ' + err);
+    showAlert('Failed to copy: ' + err, 'Clipboard Error');
   });
+}
+
+function toggleSkeletonHelper() {
+  if (!skeletonHelper) {
+    showAlert('No skeleton helper available. Load a GLB file with a skinned mesh first.', 'No Skeleton Helper');
+    return;
+  }
+
+  skeletonHelper.visible = !skeletonHelper.visible;
+
+  const btn = document.getElementById('toggleSkeletonBtn');
+  btn.textContent = skeletonHelper.visible ? 'Hide Skeleton Helper' : 'Show Skeleton Helper';
+
+  console.log('Skeleton helper visibility:', skeletonHelper.visible);
 }
